@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Quiz Istruttore Patente A/B</title>
+
+<!-- Installabile su iPhone (Aggiungi a Home) -->
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Quiz Istruttore">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#161D26">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- HOME -->
+  <section id="view-home" class="view active">
+    <div class="hero">
+      <span class="badge">ESAME ISTRUTTORE</span>
+      <h1>Simulazione quiz teoria</h1>
+      <p>Allenati con schede da 60 domande vero/falso su segnaletica, precedenza, sicurezza, meccanica, documenti e ambiente per le categorie A e B.</p>
+    </div>
+
+    <div class="rules-box">
+      <div class="rule-tile"><div class="num" id="home-tot-domande">60</div><div class="lbl">Domande a scheda</div></div>
+      <div class="rule-tile"><div class="num">2</div><div class="lbl">Errori max per passare</div></div>
+    </div>
+
+    <div class="field-group">
+      <label>Categoria patente</label>
+      <div class="seg-control" id="cat-control">
+        <button data-cat="A">A</button>
+        <button data-cat="B" class="active">B</button>
+        <button data-cat="ALL">A + B</button>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="btn-start">Inizia simulazione</button>
+    <button class="btn-secondary" id="btn-goto-errori">Ripassa gli errori</button>
+
+    <p class="data-warning" id="data-warning">
+      Banca dati ufficiale Ministero delle Infrastrutture e dei Trasporti — 7.106 quesiti di patente B, con le relative immagini dove previste.
+      La categoria A non è ancora inclusa: seleziona "B" o "A + B" per esercitarti. Vedi il README per aggiungere anche i quesiti di patente A.
+    </p>
+  </section>
+
+  <!-- QUIZ -->
+  <section id="view-quiz" class="view">
+    <div class="quiz-top">
+      <div class="quiz-progress" id="quiz-progress">Domanda 1 / 60</div>
+      <div class="quiz-errors ok" id="quiz-errors">Errori: 0 / 2</div>
+    </div>
+    <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+
+    <div class="question-card">
+      <div class="question-topic" id="q-topic">Segnaletica</div>
+      <img id="q-image" class="question-image" style="display:none" alt="Immagine del quesito">
+      <div class="question-text" id="q-text">Testo della domanda</div>
+
+      <div class="answer-row">
+        <button class="answer-btn vero" id="btn-vero" data-val="true">VERO</button>
+        <button class="answer-btn falso" id="btn-falso" data-val="false">FALSO</button>
+      </div>
+      <div class="feedback-note" id="feedback-note"></div>
+      <button class="next-btn" id="btn-next">Prossima domanda</button>
+    </div>
+  </section>
+
+  <!-- RISULTATO -->
+  <section id="view-result" class="view">
+    <div class="result-hero" id="result-hero">
+      <div class="verdict" id="result-verdict">PROMOSSO</div>
+      <p id="result-sub">Ottimo lavoro, continua così.</p>
+      <div class="result-stats">
+        <div class="tile"><div class="n" id="res-corrette">58</div><div class="l">Corrette</div></div>
+        <div class="tile"><div class="n" id="res-errate">2</div><div class="l">Errate</div></div>
+        <div class="tile"><div class="n" id="res-durata">—</div><div class="l">Tempo</div></div>
+      </div>
+    </div>
+    <button class="btn-primary" id="btn-retry">Nuova simulazione</button>
+    <button class="btn-secondary" id="btn-see-errors">Vedi gli errori di questa scheda</button>
+  </section>
+
+  <!-- STATISTICHE -->
+  <section id="view-stats" class="view">
+    <h1>Statistiche</h1>
+    <div class="stat-summary">
+      <div class="stat-card"><div class="n" id="stat-simulazioni">0</div><div class="l">Simulazioni svolte</div></div>
+      <div class="stat-card"><div class="n" id="stat-promozioni">0%</div><div class="l">Percentuale promozioni</div></div>
+      <div class="stat-card"><div class="n" id="stat-media-errori">0</div><div class="l">Errori medi a scheda</div></div>
+      <div class="stat-card"><div class="n" id="stat-domande-totali">0</div><div class="l">Domande risposte in totale</div></div>
+    </div>
+
+    <h2 style="margin-top:24px">Precisione per argomento</h2>
+    <div id="topic-breakdown"></div>
+
+    <h2 style="margin-top:24px">Storico simulazioni</h2>
+    <div id="history-list"></div>
+
+    <button class="btn-secondary" id="btn-reset-stats">Azzera tutte le statistiche</button>
+  </section>
+
+  <!-- ERRORI -->
+  <section id="view-errori" class="view">
+    <div class="top-header">
+      <h1>Ripasso errori</h1>
+      <button class="icon-btn" id="btn-clear-errori">Svuota</button>
+    </div>
+    <p>Le domande a cui hai risposto in modo errato, ordinate per numero di volte sbagliate.</p>
+    <div id="errori-list"></div>
+  </section>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-view="home">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Home
+    </button>
+    <button class="tab-btn" data-view="stats">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 20V10M12 20V4M20 20v-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Statistiche
+    </button>
+    <button class="tab-btn" data-view="errori">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
+      Errori
+    </button>
+  </nav>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
