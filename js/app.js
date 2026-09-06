@@ -1,14 +1,17 @@
 // ============ CONFIGURAZIONE ============
 const TARGET_DOMANDE = 60;
 const ERRORI_MAX_PROMOSSO = 2;
+const AUTO_ADVANCE_MS = 700; // ritardo prima di passare alla domanda successiva se la risposta è corretta
 const LS_KEY_HISTORY = "quizIstruttore_history";
 const LS_KEY_ERRORS = "quizIstruttore_errorStats";
 const LS_KEY_TOPICS = "quizIstruttore_topicStats";
+const LS_KEY_SESSIONE = "quizIstruttore_sessioneInCorso";
 
 // ============ STATO ============
 let allQuestions = [];
 let categoriaScelta = "B";
-let sessione = null; // { domande, indice, errori, risposte:[], iniziata }
+let sessione = null; // { domande, indice, errori, risposte:[], categoria, modalita, iniziata }
+let autoAdvanceTimer = null;
 
 // ============ UTILS STORAGE ============
 function loadJSON(key, fallback) {
@@ -23,12 +26,35 @@ function saveJSON(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
 }
 
+// ============ PERSISTENZA SESSIONE IN CORSO ============
+// Salva lo stato della scheda in corso così, se l'app viene sospesa o si
+// cambia sezione, la scheda non viene persa finché non è completata.
+function salvaSessionePersistita() {
+  if (!sessione) return;
+  saveJSON(LS_KEY_SESSIONE, sessione);
+}
+function cancellaSessionePersistita() {
+  try { localStorage.removeItem(LS_KEY_SESSIONE); } catch (e) {}
+}
+function ripristinaSessioneSalvata() {
+  const salvata = loadJSON(LS_KEY_SESSIONE, null);
+  if (salvata && salvata.domande && salvata.indice < salvata.domande.length) {
+    sessione = salvata;
+  }
+}
+
+function sessioneInCorso() {
+  return sessione && sessione.indice < sessione.domande.length;
+}
+
 // ============ CARICAMENTO DOMANDE ============
 async function loadQuestions() {
   const res = await fetch("data/questions.json");
   allQuestions = await res.json();
   const totDisponibili = allQuestions.length;
   document.getElementById("home-tot-domande").textContent = Math.min(TARGET_DOMANDE, totDisponibili);
+  ripristinaSessioneSalvata();
+  aggiornaBottoneHome();
 }
 
 function shuffle(arr) {
@@ -52,11 +78,22 @@ function showView(name) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.view === name));
   if (name === "stats") renderStats();
   if (name === "errori") renderErrori();
+  if (name === "home") aggiornaBottoneHome();
 }
 
 document.querySelectorAll(".tab-btn").forEach(btn => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
 });
+
+// ============ HOME: bottone "riprendi" se c'è una scheda in corso ============
+function aggiornaBottoneHome() {
+  const btn = document.getElementById("btn-start");
+  if (sessioneInCorso()) {
+    btn.textContent = `Riprendi la scheda (domanda ${sessione.indice + 1}/${sessione.domande.length})`;
+  } else {
+    btn.textContent = "Inizia simulazione";
+  }
+}
 
 // ============ SELETTORE CATEGORIA ============
 document.getElementById("cat-control").addEventListener("click", (e) => {
@@ -70,8 +107,15 @@ document.getElementById("cat-control").addEventListener("click", (e) => {
 
 document.getElementById("btn-goto-errori").addEventListener("click", () => showView("errori"));
 
-// ============ AVVIO SIMULAZIONE ============
-document.getElementById("btn-start").addEventListener("click", avviaSimulazione);
+// ============ AVVIO / RIPRESA SIMULAZIONE ============
+document.getElementById("btn-start").addEventListener("click", () => {
+  if (sessioneInCorso()) {
+    showView("quiz");
+    renderDomanda();
+  } else {
+    avviaSimulazione();
+  }
+});
 document.getElementById("btn-retry").addEventListener("click", avviaSimulazione);
 
 function avviaSimulazione() {
@@ -88,20 +132,62 @@ function avviaSimulazione() {
     errori: 0,
     risposte: [],
     categoria: categoriaScelta,
+    modalita: "esame",
     iniziata: Date.now()
   };
+  salvaSessionePersistita();
+  showView("quiz");
+  renderDomanda();
+}
+
+// ============ RIPASSO ERRORI: avvia una scheda con le sole domande sbagliate ============
+document.getElementById("btn-ripassa-errori").addEventListener("click", avviaRipasso);
+
+function avviaRipasso() {
+  const errors = loadJSON(LS_KEY_ERRORS, {});
+  const domande = Object.values(errors).map(err => ({
+    id: err.id,
+    argomento: err.argomento,
+    domanda: err.domanda,
+    immagine: err.immagine,
+    risposta: err.risposta,
+    categoria: ["A", "B"] // le domande di ripasso non vanno filtrate per categoria
+  }));
+  if (domande.length === 0) {
+    alert("Non hai ancora errori salvati da ripassare.");
+    return;
+  }
+  sessione = {
+    domande: shuffle(domande),
+    indice: 0,
+    errori: 0,
+    risposte: [],
+    categoria: "ripasso",
+    modalita: "ripasso",
+    iniziata: Date.now()
+  };
+  salvaSessionePersistita();
   showView("quiz");
   renderDomanda();
 }
 
 // ============ MOTORE QUIZ ============
 function renderDomanda() {
+  clearTimeout(autoAdvanceTimer);
   const q = sessione.domande[sessione.indice];
-  document.getElementById("quiz-progress").textContent = `Domanda ${sessione.indice + 1} / ${sessione.domande.length}`;
+  const totale = sessione.domande.length;
+  const etichettaModalita = sessione.modalita === "ripasso" ? "Ripasso" : "Domanda";
+  document.getElementById("quiz-progress").textContent = `${etichettaModalita} ${sessione.indice + 1} / ${totale}`;
+
   const errEl = document.getElementById("quiz-errors");
-  errEl.textContent = `Errori: ${sessione.errori} / ${ERRORI_MAX_PROMOSSO}`;
-  errEl.className = "quiz-errors " + (sessione.errori >= ERRORI_MAX_PROMOSSO ? "warn" : "ok");
-  document.getElementById("progress-fill").style.width = ((sessione.indice) / sessione.domande.length * 100) + "%";
+  if (sessione.modalita === "ripasso") {
+    errEl.textContent = `Corrette: ${sessione.indice - sessione.errori} / ${sessione.indice}`;
+    errEl.className = "quiz-errors ok";
+  } else {
+    errEl.textContent = `Errori: ${sessione.errori} / ${ERRORI_MAX_PROMOSSO}`;
+    errEl.className = "quiz-errors " + (sessione.errori >= ERRORI_MAX_PROMOSSO ? "warn" : "ok");
+  }
+  document.getElementById("progress-fill").style.width = ((sessione.indice) / totale * 100) + "%";
 
   document.getElementById("q-topic").textContent = q.argomento || "Generale";
   document.getElementById("q-text").textContent = q.domanda;
@@ -119,6 +205,8 @@ function renderDomanda() {
   [vero, falso].forEach(b => { b.disabled = false; b.classList.remove("correct", "wrong"); });
   document.getElementById("feedback-note").textContent = "";
   document.getElementById("btn-next").classList.remove("show");
+
+  salvaSessionePersistita();
 }
 
 function rispondi(valoreScelto) {
@@ -138,36 +226,80 @@ function rispondi(valoreScelto) {
     ? "Risposta corretta."
     : `Risposta sbagliata. La risposta corretta è ${q.risposta ? "VERO" : "FALSO"}.`;
 
-  if (!corretto) sessione.errori++;
   sessione.risposte.push({ id: q.id, corretto });
 
-  registraStatArgomento(q.argomento, corretto);
-  if (!corretto) registraErrore(q);
+  if (sessione.modalita === "ripasso") {
+    if (corretto) {
+      rimuoviErrore(q.id);
+    } else {
+      sessione.errori++;
+      registraErrore(q);
+    }
+  } else {
+    if (!corretto) sessione.errori++;
+    registraStatArgomento(q.argomento, corretto);
+    if (!corretto) registraErrore(q);
+  }
 
   const errEl = document.getElementById("quiz-errors");
-  errEl.textContent = `Errori: ${sessione.errori} / ${ERRORI_MAX_PROMOSSO}`;
-  errEl.className = "quiz-errors " + (sessione.errori >= ERRORI_MAX_PROMOSSO ? "warn" : "ok");
+  if (sessione.modalita === "ripasso") {
+    const fatte = sessione.indice + 1;
+    errEl.textContent = `Corrette: ${fatte - sessione.errori} / ${fatte}`;
+  } else {
+    errEl.textContent = `Errori: ${sessione.errori} / ${ERRORI_MAX_PROMOSSO}`;
+    errEl.className = "quiz-errors " + (sessione.errori >= ERRORI_MAX_PROMOSSO ? "warn" : "ok");
+  }
 
-  document.getElementById("btn-next").classList.add("show");
+  salvaSessionePersistita();
+
+  if (corretto) {
+    // risposta corretta: si passa automaticamente alla domanda successiva
+    document.getElementById("btn-next").classList.remove("show");
+    autoAdvanceTimer = setTimeout(() => {
+      if (sessione) avanzaDomanda();
+    }, AUTO_ADVANCE_MS);
+  } else {
+    // risposta sbagliata: si prosegue solo manualmente
+    document.getElementById("btn-next").classList.add("show");
+  }
 }
 
 document.getElementById("btn-vero").addEventListener("click", () => rispondi(true));
 document.getElementById("btn-falso").addEventListener("click", () => rispondi(false));
+document.getElementById("btn-next").addEventListener("click", avanzaDomanda);
 
-document.getElementById("btn-next").addEventListener("click", () => {
+function avanzaDomanda() {
+  clearTimeout(autoAdvanceTimer);
   sessione.indice++;
   if (sessione.indice >= sessione.domande.length) {
     concludiSimulazione();
   } else {
     renderDomanda();
   }
-});
+}
 
 function concludiSimulazione() {
   const durataSec = Math.round((Date.now() - sessione.iniziata) / 1000);
   const totale = sessione.domande.length;
   const errate = sessione.errori;
   const corrette = totale - errate;
+  const modalita = sessione.modalita;
+
+  cancellaSessionePersistita();
+
+  if (modalita === "ripasso") {
+    sessione = null;
+    showView("errori");
+    const summary = document.getElementById("ripasso-summary");
+    if (summary) {
+      summary.style.display = "block";
+      summary.textContent = corrette === totale
+        ? `Ottimo! Hai risposto correttamente a tutte le ${totale} domande ripassate.`
+        : `Hai ripassato ${totale} domande: ${corrette} corrette, ${errate} ancora da rivedere.`;
+    }
+    return;
+  }
+
   const promosso = errate <= ERRORI_MAX_PROMOSSO;
 
   const history = loadJSON(LS_KEY_HISTORY, []);
@@ -177,6 +309,8 @@ function concludiSimulazione() {
     totale, errate, corrette, promosso, durataSec
   });
   saveJSON(LS_KEY_HISTORY, history.slice(0, 200));
+
+  sessione = null;
 
   document.getElementById("result-hero").className = "result-hero " + (promosso ? "pass" : "fail");
   document.getElementById("result-verdict").textContent = promosso ? "PROMOSSO" : "NON PROMOSSO";
@@ -228,16 +362,28 @@ function registraErrore(q) {
   saveJSON(LS_KEY_ERRORS, errors);
 }
 
+function rimuoviErrore(id) {
+  const errors = loadJSON(LS_KEY_ERRORS, {});
+  delete errors[String(id)];
+  saveJSON(LS_KEY_ERRORS, errors);
+}
+
 function renderErrori() {
+  const summary = document.getElementById("ripasso-summary");
+  if (summary) summary.style.display = "none";
+
   const errors = loadJSON(LS_KEY_ERRORS, {});
   const lista = Object.values(errors).sort((a, b) => b.count - a.count);
   const container = document.getElementById("errori-list");
+  const btnRipassa = document.getElementById("btn-ripassa-errori");
   container.innerHTML = "";
 
   if (lista.length === 0) {
+    if (btnRipassa) btnRipassa.style.display = "none";
     container.innerHTML = `<div class="empty-state"><div class="big">✓</div>Nessun errore registrato.<br>Svolgi una simulazione per iniziare a costruire il tuo ripasso.</div>`;
     return;
   }
+  if (btnRipassa) btnRipassa.style.display = "block";
 
   lista.forEach(err => {
     const div = document.createElement("div");
