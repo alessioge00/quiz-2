@@ -8,10 +8,10 @@
 <!-- Installabile su iPhone (Aggiungi a Home) -->
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Quiz Istruttore">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="theme-color" content="#161D26">
+<meta name="theme-color" content="#1565C0">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -105,6 +105,16 @@
     <div id="history-list"></div>
 
     <button class="btn-secondary" id="btn-reset-stats">Azzera tutte le statistiche</button>
+  </section>
+
+  <!-- DETTAGLIO SCHEDA STORICA -->
+  <section id="view-storico-dettaglio" class="view">
+    <div class="top-header">
+      <button class="icon-btn" id="btn-storico-back">← Statistiche</button>
+    </div>
+    <h1>Dettaglio scheda</h1>
+    <p id="storico-dettaglio-sub">—</p>
+    <div id="storico-dettaglio-list"></div>
   </section>
 
   <!-- ERRORI -->
