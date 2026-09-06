@@ -226,7 +226,15 @@ function rispondi(valoreScelto) {
     ? "Risposta corretta."
     : `Risposta sbagliata. La risposta corretta è ${q.risposta ? "VERO" : "FALSO"}.`;
 
-  sessione.risposte.push({ id: q.id, corretto });
+  sessione.risposte.push({
+    id: q.id,
+    domanda: q.domanda,
+    immagine: q.immagine,
+    argomento: q.argomento,
+    rispostaCorretta: q.risposta,
+    rispostaData: valoreScelto,
+    corretto
+  });
 
   if (sessione.modalita === "ripasso") {
     if (corretto) {
@@ -306,9 +314,10 @@ function concludiSimulazione() {
   history.unshift({
     data: new Date().toISOString(),
     categoria: sessione.categoria,
-    totale, errate, corrette, promosso, durataSec
+    totale, errate, corrette, promosso, durataSec,
+    risposte: sessione.risposte
   });
-  saveJSON(LS_KEY_HISTORY, history.slice(0, 200));
+  saveJSON(LS_KEY_HISTORY, history.slice(0, 50));
 
   sessione = null;
 
@@ -453,16 +462,19 @@ function renderStats() {
   if (history.length === 0) {
     historyList.innerHTML = `<p>Nessuna simulazione svolta finora.</p>`;
   } else {
-    history.slice(0, 30).forEach(h => {
+    history.slice(0, 30).forEach((h, idx) => {
       const row = document.createElement("div");
-      row.className = "history-row";
+      row.className = "history-row" + (h.risposte && h.risposte.length ? " clickable" : "");
       const data = new Date(h.data);
       const dataFmt = data.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" }) +
         " " + data.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
       row.innerHTML = `
         <span>${dataFmt} · Cat. ${h.categoria === "ALL" ? "A+B" : h.categoria}</span>
-        <span class="esito ${h.promosso ? "pass" : "fail"}">${h.errate} err. — ${h.promosso ? "Promosso" : "Non promosso"}</span>
+        <span class="esito ${h.promosso ? "pass" : "fail"}">${h.errate} err. — ${h.promosso ? "Promosso" : "Non promosso"}${h.risposte && h.risposte.length ? '<span class="chev">›</span>' : ""}</span>
       `;
+      if (h.risposte && h.risposte.length) {
+        row.addEventListener("click", () => renderStoricoDettaglio(h));
+      }
       historyList.appendChild(row);
     });
   }
@@ -476,6 +488,35 @@ document.getElementById("btn-reset-stats").addEventListener("click", () => {
     renderStats();
   }
 });
+
+// ============ DETTAGLIO SCHEDA STORICA ============
+function renderStoricoDettaglio(entry) {
+  const data = new Date(entry.data);
+  const dataFmt = data.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" }) +
+    " alle " + data.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  document.getElementById("storico-dettaglio-sub").textContent =
+    `${dataFmt} · Categoria ${entry.categoria === "ALL" ? "A+B" : entry.categoria} · ${entry.corrette}/${entry.totale} corrette · ${entry.promosso ? "Promosso" : "Non promosso"}`;
+
+  const container = document.getElementById("storico-dettaglio-list");
+  container.innerHTML = "";
+  entry.risposte.forEach((r, i) => {
+    const div = document.createElement("div");
+    div.className = "review-item " + (r.corretto ? "corretta" : "sbagliata");
+    div.innerHTML = `
+      <span class="esito-badge">Domanda ${i + 1} · ${r.corretto ? "Corretta" : "Sbagliata"}</span>
+      ${r.immagine ? `<img src="${r.immagine}" alt="">` : ""}
+      <div class="q">${escapeHtml(r.domanda)}</div>
+      <div class="ans-line"><span class="lbl">Argomento:</span> ${escapeHtml(r.argomento || "—")}</div>
+      <div class="ans-line"><span class="lbl">Hai risposto:</span> <span class="val ${r.corretto ? "right" : "wrong"}">${r.rispostaData ? "VERO" : "FALSO"}</span></div>
+      ${!r.corretto ? `<div class="ans-line"><span class="lbl">Risposta corretta:</span> <span class="val right">${r.rispostaCorretta ? "VERO" : "FALSO"}</span></div>` : ""}
+    `;
+    container.appendChild(div);
+  });
+
+  showView("storico-dettaglio");
+}
+
+document.getElementById("btn-storico-back").addEventListener("click", () => showView("stats"));
 
 // ============ HELPERS ============
 function escapeHtml(str) {
